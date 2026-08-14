@@ -33,9 +33,10 @@ Harness 的界面本身没有改动 —— 本项目只提供原生外壳。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
-| **macOS**（Apple Silicon） | `DeepSeek Harness_*_aarch64.dmg` | macOS 10.13+；未签名，见下方说明 |
-| **Windows**（x64） | `DeepSeek Harness_*_x64-setup.exe`（NSIS） | Windows 10/11 x64 |
-| **Windows**（x64） | `DeepSeek Harness_*_x64_en-US.msi`（WiX） | Windows 10/11 x64 |
+| **macOS**（Apple Silicon） | `DeepSeek.Harness_*_aarch64.dmg` | macOS 10.13+；未签名，见下方说明 |
+| **macOS**（Apple Silicon） | `DeepSeek.Harness_*_arm64.app.zip` | 便携版 `.app`（解压后拖入「应用程序」） |
+| **Windows**（x64） | `DeepSeek.Harness_*_x64-setup.exe`（NSIS） | Windows 10/11 x64 |
+| **Windows**（x64） | `DeepSeek.Harness_*_x64_en-US.msi`（WiX） | Windows 10/11 x64 |
 
 ### macOS 说明（Gatekeeper）
 

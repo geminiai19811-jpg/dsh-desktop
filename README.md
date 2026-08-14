@@ -33,9 +33,10 @@ Prebuilt installers are published on the [Releases](https://github.com/xingj404-
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| **macOS** (Apple Silicon) | `DeepSeek Harness_*_aarch64.dmg` | macOS 10.13+; unsigned build — see note below |
-| **Windows** (x64) | `DeepSeek Harness_*_x64-setup.exe` (NSIS) | Windows 10/11 x64 |
-| **Windows** (x64) | `DeepSeek Harness_*_x64_en-US.msi` (WiX) | Windows 10/11 x64 |
+| **macOS** (Apple Silicon) | `DeepSeek.Harness_*_aarch64.dmg` | macOS 10.13+; unsigned build — see note below |
+| **macOS** (Apple Silicon) | `DeepSeek.Harness_*_arm64.app.zip` | portable `.app` (unzip and drag to Applications) |
+| **Windows** (x64) | `DeepSeek.Harness_*_x64-setup.exe` (NSIS) | Windows 10/11 x64 |
+| **Windows** (x64) | `DeepSeek.Harness_*_x64_en-US.msi` (WiX) | Windows 10/11 x64 |
 
 ### macOS note (Gatekeeper)
 
