@@ -25,6 +25,8 @@ pub struct AppState {
     pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
     /// Version of a detected-but-not-yet-installed update, if any.
     pub update: Mutex<Option<String>>,
+    /// Set while an update download is in progress.
+    pub downloading: AtomicBool,
 }
 
 impl Default for AppState {
@@ -36,6 +38,7 @@ impl Default for AppState {
             shutting_down: AtomicBool::new(false),
             tray: Mutex::new(None),
             update: Mutex::new(None),
+            downloading: AtomicBool::new(false),
         }
     }
 }
@@ -110,7 +113,7 @@ fn get_update_version(state: tauri::State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 fn install_update(app: AppHandle) {
-    run_update_flow(app, false);
+    run_update_flow(app, false, false);
 }
 
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
@@ -234,10 +237,33 @@ fn toggle_devtools(app: &AppHandle) {
     }
 }
 
-/// Check, confirm, download, install, and restart. When `show_up_to_date` is
-/// true, a "you're up to date" dialog is shown when no update exists.
-fn run_update_flow(app: AppHandle, show_up_to_date: bool) {
+/// Resets the `downloading` flag when the update-flow thread finishes.
+struct DownloadGuard(AppHandle);
+impl Drop for DownloadGuard {
+    fn drop(&mut self) {
+        self.0
+            .state::<AppState>()
+            .downloading
+            .store(false, Ordering::SeqCst);
+    }
+}
+
+/// Check, download in the background, then prompt to restart.
+///
+/// - `show_up_to_date`: show a "you're up to date" dialog when nothing is found.
+/// - `confirm_before_download`: ask the user before the download starts.
+///
+/// The download always runs in the background (in this thread, without blocking
+/// the UI). Once it finishes, a dialog asks the user to restart, and only then
+/// is the downloaded update installed.
+fn run_update_flow(app: AppHandle, show_up_to_date: bool, confirm_before_download: bool) {
     std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        if state.downloading.swap(true, Ordering::SeqCst) {
+            return; // another download already in progress
+        }
+        let _guard = DownloadGuard(app.clone());
+
         let checked: Result<Option<tauri_plugin_updater::Update>, String> =
             tauri::async_runtime::block_on(async {
                 let updater = app.updater().map_err(|e| e.to_string())?;
@@ -266,15 +292,54 @@ fn run_update_flow(app: AppHandle, show_up_to_date: bool) {
             }
         };
 
+        if confirm_before_download {
+            let yes = app
+                .dialog()
+                .message(format!(
+                    "DeepSeek Harness {} is available.\n\nDownload it in the background?",
+                    update.version
+                ))
+                .title("Update Available")
+                .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                    "Download".into(),
+                    "Later".into(),
+                ))
+                .blocking_show();
+            if !yes {
+                return;
+            }
+        }
+
+        // Download in the background. `download` also verifies the minisign
+        // signature before returning the bytes.
+        let bytes = tauri::async_runtime::block_on(async {
+            update
+                .download(|_chunk_length, _content_length| {}, || {})
+                .await
+        });
+
+        let bytes = match bytes {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let _ = app
+                    .dialog()
+                    .message(format!("Download failed: {e}"))
+                    .title("DeepSeek Harness")
+                    .blocking_show();
+                return;
+            }
+        };
+
+        // Download finished: prompt the user to restart to apply the update.
         let yes = app
             .dialog()
             .message(format!(
-                "DeepSeek Harness {} is available.\n\nDownload and install now?",
+                "DeepSeek Harness {} has been downloaded.\n\nRestart now to install the update?",
                 update.version
             ))
-            .title("Update Available")
+            .title("Update Ready")
             .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-                "Update".into(),
+                "Restart & Update".into(),
                 "Later".into(),
             ))
             .blocking_show();
@@ -283,18 +348,12 @@ fn run_update_flow(app: AppHandle, show_up_to_date: bool) {
             return;
         }
 
-        let downloaded = tauri::async_runtime::block_on(async {
-            update
-                .download_and_install(|_chunk_length, _content_length| {}, || {})
-                .await
-        });
-
-        match downloaded {
+        match update.install(bytes) {
             Ok(()) => app.restart(),
             Err(e) => {
                 let _ = app
                     .dialog()
-                    .message(format!("Update failed: {e}"))
+                    .message(format!("Install failed: {e}"))
                     .title("DeepSeek Harness")
                     .blocking_show();
             }
@@ -304,7 +363,7 @@ fn run_update_flow(app: AppHandle, show_up_to_date: bool) {
 
 /// Menu entry: manual check (shows "up to date" when nothing is found).
 fn check_for_updates(app: AppHandle) {
-    run_update_flow(app, true);
+    run_update_flow(app, true, true);
 }
 
 /// Background periodic check. When a new version is found, stores it, emits the
