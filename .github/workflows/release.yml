@@ -91,24 +91,20 @@ jobs:
               "$OLDPWD/dist-assets/DeepSeek.Harness_${VERSION}_arm64.app.zip")
             cp "$BUNDLE"/dmg/*.dmg "dist-assets/DeepSeek.Harness_${VERSION}_aarch64.dmg" || echo "no dmg produced"
             # Platform fragment for latest.json.
-            python3 - "$UPDATER.sig" "$BASE/DeepSeek.Harness_${VERSION}_aarch64.app.tar.gz" <<'PY'
-            import sys, json
-            sig = open(sys.argv[1]).read().strip()
-            frag = {"darwin-aarch64": {"url": sys.argv[2], "signature": sig}}
-            open("dist-assets/latest-darwin-aarch64.json", "w").write(json.dumps(frag))
-            PY
+            python3 scripts/updater-manifest.py fragment darwin-aarch64 \
+              "$BASE/DeepSeek.Harness_${VERSION}_aarch64.app.tar.gz" \
+              "$UPDATER.sig" \
+              dist-assets/latest-darwin-aarch64.json
           else
             # Updater bundle (NSIS) + signature.
             INST="dist-assets/DeepSeek.Harness_${VERSION}_x64-setup.exe"
             cp "$BUNDLE"/nsis/*-setup.exe "$INST"
             cp "$BUNDLE"/nsis/*-setup.exe.sig "$INST.sig"
             cp "$BUNDLE"/msi/*.msi "dist-assets/DeepSeek.Harness_${VERSION}_x64_en-US.msi" || echo "no msi produced"
-            python3 - "$INST.sig" "$BASE/DeepSeek.Harness_${VERSION}_x64-setup.exe" <<'PY'
-            import sys, json
-            sig = open(sys.argv[1]).read().strip()
-            frag = {"windows-x86_64": {"url": sys.argv[2], "signature": sig}}
-            open("dist-assets/latest-windows-x86_64.json", "w").write(json.dumps(frag))
-            PY
+            python3 scripts/updater-manifest.py fragment windows-x86_64 \
+              "$BASE/DeepSeek.Harness_${VERSION}_x64-setup.exe" \
+              "$INST.sig" \
+              dist-assets/latest-windows-x86_64.json
           fi
           ls -la dist-assets
 
@@ -126,6 +122,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v5
         with:
@@ -137,22 +136,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          python3 - "$VERSION" <<'PY'
-          import sys, json, glob, datetime
-          version = sys.argv[1]
-          platforms = {}
-          for f in glob.glob("dist-assets/latest-*.json"):
-              platforms.update(json.load(open(f)))
-          latest = {
-              "version": version,
-              "notes": f"DeepSeek Harness desktop {version}",
-              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "platforms": platforms,
-          }
-          with open("dist-assets/latest.json", "w") as fh:
-              json.dump(latest, fh, indent=2)
-          print(json.dumps(latest, indent=2))
-          PY
+          python3 scripts/updater-manifest.py merge "$VERSION" dist-assets/latest.json dist-assets/latest-*.json
           # Keep the release clean: drop the inlined signatures and fragments.
           rm -f dist-assets/*.sig dist-assets/latest-*.json
 
