@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
-    AppHandle, Manager, RunEvent, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -23,6 +23,8 @@ pub struct AppState {
     pub shutting_down: AtomicBool,
     /// Keeps the tray icon alive for the process lifetime.
     pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
+    /// Version of a detected-but-not-yet-installed update, if any.
+    pub update: Mutex<Option<String>>,
 }
 
 impl Default for AppState {
@@ -33,6 +35,7 @@ impl Default for AppState {
             zoom: Mutex::new(1.0),
             shutting_down: AtomicBool::new(false),
             tray: Mutex::new(None),
+            update: Mutex::new(None),
         }
     }
 }
@@ -55,6 +58,59 @@ fn restart_backend(state: tauri::State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 fn quit_app(app: AppHandle) {
     app.exit(0);
+}
+
+/// Payload for the `update-available` event consumed by the injected badge.
+#[derive(Clone, serde::Serialize)]
+struct UpdatePayload {
+    version: String,
+}
+
+/// Injected into the webview (idempotent) to show a blue download badge in the
+/// bottom-left corner when an update is available. Clicking it runs the
+/// `install_update` command.
+const BADGE_SCRIPT: &str = r#"
+(function () {
+  if (window.__dshUpdateBadgeInstalled) return;
+  window.__dshUpdateBadgeInstalled = true;
+
+  function showBadge(version) {
+    if (document.getElementById("dsh-update-badge")) return;
+    var b = document.createElement("button");
+    b.id = "dsh-update-badge";
+    b.textContent = "\u2B07";
+    b.title = "New version available: v" + version;
+    b.setAttribute("style", "position:fixed;left:12px;bottom:12px;z-index:2147483647;width:40px;height:40px;border-radius:50%;border:none;background:#4D6BFE;color:#fff;font-size:19px;line-height:1;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;");
+    b.addEventListener("click", function () {
+      var invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+      if (invoke) invoke("install_update").catch(function () {});
+    });
+    document.body.appendChild(b);
+  }
+
+  var invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  var listen = window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen;
+
+  if (listen) {
+    listen("update-available", function (e) {
+      var v = (e.payload && e.payload.version) || "";
+      if (v) showBadge(v);
+    });
+  }
+  if (invoke) {
+    invoke("get_update_version").then(function (v) { if (v) showBadge(v); }).catch(function () {});
+  }
+})();
+"#;
+
+#[tauri::command]
+fn get_update_version(state: tauri::State<'_, AppState>) -> Option<String> {
+    state.update.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn install_update(app: AppHandle) {
+    run_update_flow(app, false);
 }
 
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
@@ -178,10 +234,10 @@ fn toggle_devtools(app: &AppHandle) {
     }
 }
 
-/// Menu entry: check for updates, ask, download, install, and restart.
-fn check_for_updates(app: AppHandle) {
+/// Check, confirm, download, install, and restart. When `show_up_to_date` is
+/// true, a "you're up to date" dialog is shown when no update exists.
+fn run_update_flow(app: AppHandle, show_up_to_date: bool) {
     std::thread::spawn(move || {
-        // 1. Check for an update (async).
         let checked: Result<Option<tauri_plugin_updater::Update>, String> =
             tauri::async_runtime::block_on(async {
                 let updater = app.updater().map_err(|e| e.to_string())?;
@@ -191,11 +247,13 @@ fn check_for_updates(app: AppHandle) {
         let update = match checked {
             Ok(Some(update)) => update,
             Ok(None) => {
-                let _ = app
-                    .dialog()
-                    .message("You are running the latest version.")
-                    .title("DeepSeek Harness")
-                    .blocking_show();
+                if show_up_to_date {
+                    let _ = app
+                        .dialog()
+                        .message("You are running the latest version.")
+                        .title("DeepSeek Harness")
+                        .blocking_show();
+                }
                 return;
             }
             Err(e) => {
@@ -208,7 +266,6 @@ fn check_for_updates(app: AppHandle) {
             }
         };
 
-        // 2. Confirm before downloading.
         let yes = app
             .dialog()
             .message(format!(
@@ -226,7 +283,6 @@ fn check_for_updates(app: AppHandle) {
             return;
         }
 
-        // 3. Download + install (async), then restart.
         let downloaded = tauri::async_runtime::block_on(async {
             update
                 .download_and_install(|_chunk_length, _content_length| {}, || {})
@@ -246,6 +302,50 @@ fn check_for_updates(app: AppHandle) {
     });
 }
 
+/// Menu entry: manual check (shows "up to date" when nothing is found).
+fn check_for_updates(app: AppHandle) {
+    run_update_flow(app, true);
+}
+
+/// Background periodic check. When a new version is found, stores it, emits the
+/// `update-available` event, and injects the download badge into the webview.
+fn auto_update_check(app: AppHandle) {
+    std::thread::spawn(move || {
+        // Wait for the backend + UI to come up before the first check.
+        std::thread::sleep(std::time::Duration::from_secs(20));
+        loop {
+            let found: Option<String> = tauri::async_runtime::block_on(async {
+                let updater = app.updater().ok()?;
+                updater
+                    .check()
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|u| u.version.to_string())
+            });
+
+            if let Some(version) = found {
+                *app.state::<AppState>().update.lock().unwrap() = Some(version.clone());
+                let _ = app.emit(
+                    "update-available",
+                    UpdatePayload {
+                        version: version.clone(),
+                    },
+                );
+            }
+
+            // Re-inject the badge if an update is pending (covers page reloads).
+            if app.state::<AppState>().update.lock().unwrap().is_some() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.eval(BADGE_SCRIPT);
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(4 * 3600));
+        }
+    });
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -255,7 +355,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_backend_url,
             restart_backend,
-            quit_app
+            quit_app,
+            get_update_version,
+            install_update
         ])
         .setup(|app| {
             build_menu(app)?;
@@ -266,6 +368,7 @@ pub fn run() {
             std::thread::spawn(move || {
                 backend::start_watchdog(&handle);
             });
+            auto_update_check(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {

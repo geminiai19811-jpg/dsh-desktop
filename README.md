@@ -66,9 +66,11 @@ Use the desktop version when you want a first-class, double-clickable app experi
 ## 🔄 Auto-update
 
 The app ships with [Tauri's updater](https://v2.tauri.app/plugin/updater/). Use the
-menu bar → **DeepSeek Harness → Check for Updates…** to check, download, and install
-the latest release in-app. Every download is verified against a minisign public key
-baked into the app, so it cannot be tampered with.
+menu bar → **DeepSeek Harness → Check for Updates…** to check manually, or let the
+app **check automatically in the background** (on launch and every few hours). When a
+new version is found, a blue **download badge** appears in the bottom-left corner —
+click it to download and install. Every download is verified against a minisign public
+key baked into the app, so it cannot be tampered with.
 
 Because a release bundles both the shell and `dsh web`, one in-app update covers
 everything: a new `@deepseek-ai/dsh` (backend + web UI) and any shell changes.

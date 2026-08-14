@@ -104,6 +104,17 @@ fn pick_free_port() -> Result<u16, String> {
     Ok(port)
 }
 
+/// A stable working directory for the backend. dsh groups sessions by
+/// `process.cwd()`, so pinning this keeps the session namespace identical no
+/// matter how the app was launched (Finder vs terminal). Defaults to `$HOME`.
+fn default_workspace_dir() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .ok()
+        .filter(|h| !h.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/"))
+}
+
 /// Drain a child's output pipe so it cannot fill up and block the child.
 /// Captures a capped tail of the bytes for error reporting.
 fn drain<R: Read + Send + 'static>(reader: R, sink: Arc<Mutex<String>>) {
@@ -147,6 +158,9 @@ fn spawn_backend(app: &AppHandle) -> Result<(Child, String, u16, Arc<Mutex<Strin
             c
         }
     };
+
+    // Pin the working directory so session storage is stable across launches.
+    command.current_dir(default_workspace_dir());
 
     let mut child = command
         .stdout(Stdio::piped())
