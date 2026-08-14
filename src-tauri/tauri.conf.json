@@ -38,6 +38,15 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "DeepSeek Harness desktop app",
-    "longDescription": "A native desktop shell for the DeepSeek Harness coding agent (dsh web): it runs the harness backend locally and wraps the browser UI in a native window with a menu bar and system tray."
+    "longDescription": "A native desktop shell for the DeepSeek Harness coding agent (dsh web): it runs the harness backend locally and wraps the browser UI in a native window with a menu bar and system tray.",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczRDE3NkY0RjYxMkEzQjUKUldTMW94TDI5SGJSYzhZb3k0V0FoRTg1RGtQZ1VlaUcxN2Y0UGJMZE5GWGtFRzFUUUhqd3ZreDcK",
+      "endpoints": [
+        "https://github.com/xingj404-lab/dsh-desktop/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

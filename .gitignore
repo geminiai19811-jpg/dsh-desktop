@@ -16,6 +16,9 @@ resources/backend/
 .npm-cache/
 .npm-logs/
 
+# Updater signing keys (the private key must never be committed)
+keys/
+
 # macOS
 .DS_Store
 

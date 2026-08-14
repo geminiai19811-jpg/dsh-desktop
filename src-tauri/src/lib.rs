@@ -6,6 +6,8 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Manager, RunEvent, WindowEvent,
 };
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_updater::UpdaterExt;
 
 mod backend;
 
@@ -60,6 +62,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
 
     let app_menu = SubmenuBuilder::new(h, "DeepSeek Harness")
         .item(&PredefinedMenuItem::about(h, None, None)?)
+        .separator()
+        .item(&MenuItem::with_id(h, "check-updates", "Check for Updates…", true, None::<&str>)?)
         .separator()
         .item(&PredefinedMenuItem::quit(h, Some("Quit DeepSeek Harness"))?)
         .build()?;
@@ -174,9 +178,79 @@ fn toggle_devtools(app: &AppHandle) {
     }
 }
 
+/// Menu entry: check for updates, ask, download, install, and restart.
+fn check_for_updates(app: AppHandle) {
+    std::thread::spawn(move || {
+        // 1. Check for an update (async).
+        let checked: Result<Option<tauri_plugin_updater::Update>, String> =
+            tauri::async_runtime::block_on(async {
+                let updater = app.updater().map_err(|e| e.to_string())?;
+                updater.check().await.map_err(|e| e.to_string())
+            });
+
+        let update = match checked {
+            Ok(Some(update)) => update,
+            Ok(None) => {
+                let _ = app
+                    .dialog()
+                    .message("You are running the latest version.")
+                    .title("DeepSeek Harness")
+                    .blocking_show();
+                return;
+            }
+            Err(e) => {
+                let _ = app
+                    .dialog()
+                    .message(format!("Update check failed: {e}"))
+                    .title("DeepSeek Harness")
+                    .blocking_show();
+                return;
+            }
+        };
+
+        // 2. Confirm before downloading.
+        let yes = app
+            .dialog()
+            .message(format!(
+                "DeepSeek Harness {} is available.\n\nDownload and install now?",
+                update.version
+            ))
+            .title("Update Available")
+            .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                "Update".into(),
+                "Later".into(),
+            ))
+            .blocking_show();
+
+        if !yes {
+            return;
+        }
+
+        // 3. Download + install (async), then restart.
+        let downloaded = tauri::async_runtime::block_on(async {
+            update
+                .download_and_install(|_chunk_length, _content_length| {}, || {})
+                .await
+        });
+
+        match downloaded {
+            Ok(()) => app.restart(),
+            Err(e) => {
+                let _ = app
+                    .dialog()
+                    .message(format!("Update failed: {e}"))
+                    .title("DeepSeek Harness")
+                    .blocking_show();
+            }
+        }
+    });
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             get_backend_url,
@@ -200,6 +274,7 @@ pub fn run() {
             "zoom-reset" => zoom(app, 0.0),
             "reload" => reload(app),
             "toggle-devtools" => toggle_devtools(app),
+            "check-updates" => check_for_updates(app.clone()),
             _ => {}
         })
         .on_window_event(|window, event| {

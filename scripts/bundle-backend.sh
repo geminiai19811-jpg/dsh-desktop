@@ -13,7 +13,7 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="$ROOT/resources/backend"
-DSH_VERSION="${DSH_VERSION:-0.1.0-rc.6}"
+DSH_VERSION="${DSH_VERSION:-$(cat "$ROOT/dsh-version" 2>/dev/null || echo 0.1.0-rc.6)}"
 
 # Local npm cache/logs to avoid the root-owned ~/.npm cache (EPERM).
 export npm_config_cache="$ROOT/.npm-cache"
