@@ -1,0 +1,114 @@
+name: release
+
+# Builds the desktop app for macOS (Apple Silicon) and Windows (x64), and
+# publishes the installers to a GitHub Release whenever a `v*` tag is pushed.
+# A manual run (workflow_dispatch) just builds and stores the artifacts.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DSH_VERSION: "0.1.0-rc.6"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            rust_target: aarch64-apple-darwin
+            friendly_os: macOS
+          - os: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            friendly_os: Windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Stage self-contained backend
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ./scripts/bundle-backend.sh
+          else
+            # Windows: stage node.exe + a win32-native install of the dsh CLI.
+            mkdir -p resources/backend
+            cp "$(node -e 'process.stdout.write(process.execPath)')" resources/backend/node.exe
+            cd resources/backend
+            npm init -y >/dev/null 2>&1
+            npm install "@deepseek-ai/dsh@${DSH_VERSION}"
+            cd ../..
+          fi
+
+      - name: Build Tauri app
+        run: npm run build
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          BUNDLE="src-tauri/target/release/bundle"
+          mkdir -p dist-assets
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ARCH="$(uname -m)"   # arm64 or x86_64
+            (cd "$BUNDLE/macos" && ditto -c -k "DeepSeek Harness.app" \
+              "$OLDPWD/dist-assets/DeepSeek Harness_${VERSION}_${ARCH}.app.zip")
+            cp "$BUNDLE/dmg"/*.dmg dist-assets/ || echo "no dmg produced"
+          else
+            cp "$BUNDLE/nsis"/*-setup.exe dist-assets/ || echo "no nsis produced"
+            cp "$BUNDLE/msi"/*.msi dist-assets/ || echo "no msi produced"
+          fi
+          ls -la dist-assets
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.friendly_os }}-${{ matrix.rust_target }}
+          path: dist-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-assets/**/*
+          generate_release_notes: true

@@ -1,0 +1,23 @@
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Node
+node_modules/
+
+# Local Rust toolchain (installed workspace-local by scripts/setup-rust.sh)
+.rustup/
+.cargo/
+
+# Generated self-contained backend (node + dsh), built by scripts/bundle-backend.sh
+resources/backend/
+
+# npm local cache/logs
+.npm-cache/
+.npm-logs/
+
+# macOS
+.DS_Store
+
+# Build output
+dist/
