@@ -27,3 +27,6 @@ test-update/
 
 # Build output
 dist/
+
+# Local Python deps for icon generation
+pylibs/
