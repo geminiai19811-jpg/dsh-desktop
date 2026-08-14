@@ -78,9 +78,9 @@ const BADGE_SCRIPT: &str = r#"
     if (document.getElementById("dsh-update-badge")) return;
     var b = document.createElement("button");
     b.id = "dsh-update-badge";
-    b.textContent = "\u2B07";
-    b.title = "New version available: v" + version;
-    b.setAttribute("style", "position:fixed;left:12px;bottom:12px;z-index:2147483647;width:40px;height:40px;border-radius:50%;border:none;background:#4D6BFE;color:#fff;font-size:19px;line-height:1;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;");
+    b.title = "发现新版本 v" + version + "，点击更新";
+    b.innerHTML = '<span style="font-size:14px;">\u2B07</span><span>更新</span>';
+    b.setAttribute("style", "position:fixed;left:14px;bottom:14px;z-index:2147483647;display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:8px;border:none;background:#4D6BFE;color:#fff;font-size:13px;font-weight:500;line-height:1;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);");
     b.addEventListener("click", function () {
       var invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
       if (invoke) invoke("install_update").catch(function () {});
