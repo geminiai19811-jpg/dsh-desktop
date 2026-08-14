@@ -1,6 +1,7 @@
 # DeepSeek Harness 桌面版
 
 <p align="center">
+  <a href="https://dsh.clawloop.app"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-dsh.clawloop.app-4D6BFE?style=flat-square" alt="Official website" /></a>
   <a href="https://github.com/xingj404-lab/dsh-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/xingj404-lab/dsh-desktop?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&style=flat-square" alt="Latest release" /></a>
   <a href="https://github.com/xingj404-lab/dsh-desktop/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/xingj404-lab/dsh-desktop/release.yml?label=%E6%9E%84%E5%BB%BA%E7%8A%B6%E6%80%81&style=flat-square" alt="Build status" /></a>
   <a href="https://github.com/xingj404-lab/dsh-desktop/blob/main/README.md">English</a>
@@ -29,14 +30,11 @@ Harness 的界面本身没有改动 —— 本项目只提供原生外壳。
 
 ## 📦 下载
 
-预编译安装包发布在 [Releases](https://github.com/xingj404-lab/dsh-desktop/releases/latest) 页面。
+请前往官网下载对应平台的最新版本：
 
-| 平台 | 安装包 | 说明 |
-| --- | --- | --- |
-| **macOS**（Apple Silicon） | `DeepSeek.Harness_*_aarch64.dmg` | macOS 10.13+；未签名，见下方说明 |
-| **macOS**（Apple Silicon） | `DeepSeek.Harness_*_arm64.app.zip` | 便携版 `.app`（解压后拖入「应用程序」） |
-| **Windows**（x64） | `DeepSeek.Harness_*_x64-setup.exe`（NSIS） | Windows 10/11 x64 |
-| **Windows**（x64） | `DeepSeek.Harness_*_x64_en-US.msi`（WiX） | Windows 10/11 x64 |
+👉 **[dsh.clawloop.app](https://dsh.clawloop.app)**
+
+预编译安装包也同步发布在 [GitHub Releases](https://github.com/xingj404-lab/dsh-desktop/releases/latest)（macOS `.dmg` / `.app.zip`，Windows NSIS `.exe` / WiX `.msi`）。
 
 ### macOS 说明（Gatekeeper）
 

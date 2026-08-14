@@ -1,6 +1,7 @@
 # DeepSeek Harness Desktop
 
 <p align="center">
+  <a href="https://dsh.clawloop.app"><img src="https://img.shields.io/badge/website-dsh.clawloop.app-4D6BFE?style=flat-square" alt="Official website" /></a>
   <a href="https://github.com/xingj404-lab/dsh-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/xingj404-lab/dsh-desktop?label=latest%20release&style=flat-square" alt="Latest release" /></a>
   <a href="https://github.com/xingj404-lab/dsh-desktop/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/xingj404-lab/dsh-desktop/release.yml?label=build&style=flat-square" alt="Build status" /></a>
   <a href="https://github.com/xingj404-lab/dsh-desktop/blob/main/README.zh-CN.md">中文</a>
@@ -30,14 +31,11 @@ The harness UI itself is unchanged — this project only supplies the native she
 
 ## 📦 Download
 
-Prebuilt installers are published on the [Releases](https://github.com/xingj404-lab/dsh-desktop/releases/latest) page.
+Get the latest version for your platform from the official website:
 
-| Platform | Asset | Notes |
-| --- | --- | --- |
-| **macOS** (Apple Silicon) | `DeepSeek.Harness_*_aarch64.dmg` | macOS 10.13+; unsigned build — see note below |
-| **macOS** (Apple Silicon) | `DeepSeek.Harness_*_arm64.app.zip` | portable `.app` (unzip and drag to Applications) |
-| **Windows** (x64) | `DeepSeek.Harness_*_x64-setup.exe` (NSIS) | Windows 10/11 x64 |
-| **Windows** (x64) | `DeepSeek.Harness_*_x64_en-US.msi` (WiX) | Windows 10/11 x64 |
+👉 **[dsh.clawloop.app](https://dsh.clawloop.app)**
+
+Prebuilt installers are also published on [GitHub Releases](https://github.com/xingj404-lab/dsh-desktop/releases/latest) (macOS `.dmg` / `.app.zip`, Windows NSIS `.exe` / WiX `.msi`).
 
 ### macOS note (Gatekeeper)
 
