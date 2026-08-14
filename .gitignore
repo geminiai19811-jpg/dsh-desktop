@@ -19,6 +19,9 @@ resources/backend/
 # Updater signing keys (the private key must never be committed)
 keys/
 
+# Local updater test staging
+test-update/
+
 # macOS
 .DS_Store
 
