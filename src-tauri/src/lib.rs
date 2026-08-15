@@ -400,7 +400,8 @@ fn auto_update_check(app: AppHandle) {
                 }
             }
 
-            std::thread::sleep(std::time::Duration::from_secs(4 * 3600));
+            // Check every 30 minutes (each check is a ~1 KB latest.json fetch).
+            std::thread::sleep(std::time::Duration::from_secs(30 * 60));
         }
     });
 }
