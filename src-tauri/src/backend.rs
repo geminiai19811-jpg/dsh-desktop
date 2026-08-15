@@ -249,11 +249,18 @@ pub fn start_watchdog(app: &AppHandle) {
 
         match spawn_backend(app) {
             Ok((mut child, url, port, err_sink)) => {
-                *state.url.lock().unwrap() = Some(url.clone());
                 *state.pid.lock().unwrap() = Some(child.id());
 
                 match wait_until_ready(&mut child, port, STARTUP_TIMEOUT) {
                     ReadyOutcome::Ready => {
+                        // Only publish the URL once the backend is actually
+                        // listening. The splash page's `get_backend_url` race
+                        // guard navigates as soon as a URL is present, so
+                        // publishing it here (instead of right after spawn)
+                        // prevents the webview from hitting a port that is not
+                        // yet bound — which surfaced as "127.0.0.1 refused
+                        // connection" on slow Windows first launches.
+                        *state.url.lock().unwrap() = Some(url.clone());
                         emit(app, "ready", Some(url.clone()), None);
                         // Block until the child exits (a crash, or a SIGTERM
                         // from `restart_backend` / shutdown).
