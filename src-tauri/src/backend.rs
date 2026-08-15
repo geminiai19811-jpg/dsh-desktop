@@ -106,13 +106,28 @@ fn pick_free_port() -> Result<u16, String> {
 
 /// A stable working directory for the backend. dsh groups sessions by
 /// `process.cwd()`, so pinning this keeps the session namespace identical no
-/// matter how the app was launched (Finder vs terminal). Defaults to `$HOME`.
+/// matter how the app was launched. Windows has no `$HOME`, so use
+/// `%USERPROFILE%` there; on Unix use `$HOME` (falling back to `/`).
 fn default_workspace_dir() -> std::path::PathBuf {
-    std::env::var("HOME")
-        .ok()
-        .filter(|h| !h.is_empty())
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("/"))
+    #[cfg(windows)]
+    {
+        if let Ok(p) = std::env::var("USERPROFILE") {
+            if !p.is_empty() {
+                return std::path::PathBuf::from(p);
+            }
+        }
+        // Last resort: the C: drive root (a real absolute directory).
+        std::path::PathBuf::from("C:\\")
+    }
+
+    #[cfg(not(windows))]
+    {
+        std::env::var("HOME")
+            .ok()
+            .filter(|h| !h.is_empty())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/"))
+    }
 }
 
 /// Drain a child's output pipe so it cannot fill up and block the child.
