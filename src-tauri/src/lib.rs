@@ -11,8 +11,16 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod backend;
 
+/// A downloaded-but-not-yet-installed update, held in memory until the user
+/// chooses to restart and apply it.
+struct PendingUpdate {
+    version: String,
+    update: tauri_plugin_updater::Update,
+    bytes: Vec<u8>,
+}
+
 /// Shared state between the backend watchdog thread and the UI commands.
-pub struct AppState {
+pub(crate) struct AppState {
     /// PID of the running `dsh web` child, if any.
     pub pid: Mutex<Option<u32>>,
     /// Canonical loopback URL of the running backend, if ready.
@@ -23,9 +31,9 @@ pub struct AppState {
     pub shutting_down: AtomicBool,
     /// Keeps the tray icon alive for the process lifetime.
     pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
-    /// Version of a detected-but-not-yet-installed update, if any.
-    pub update: Mutex<Option<String>>,
-    /// Set while an update download is in progress.
+    /// A downloaded-but-not-yet-installed update, if any.
+    pub pending: Mutex<Option<PendingUpdate>>,
+    /// Set while an update download/install is in progress.
     pub downloading: AtomicBool,
 }
 
@@ -37,7 +45,7 @@ impl Default for AppState {
             zoom: Mutex::new(1.0),
             shutting_down: AtomicBool::new(false),
             tray: Mutex::new(None),
-            update: Mutex::new(None),
+            pending: Mutex::new(None),
             downloading: AtomicBool::new(false),
         }
     }
@@ -108,12 +116,22 @@ const BADGE_SCRIPT: &str = r#"
 
 #[tauri::command]
 fn get_update_version(state: tauri::State<'_, AppState>) -> Option<String> {
-    state.update.lock().unwrap().clone()
+    state
+        .pending
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|p| p.version.clone())
 }
 
 #[tauri::command]
 fn install_update(app: AppHandle) {
-    run_update_flow(app, false, false);
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        state.downloading.store(true, Ordering::SeqCst);
+        let _guard = DownloadGuard(app.clone());
+        prompt_and_install(&app);
+    });
 }
 
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
@@ -248,39 +266,101 @@ impl Drop for DownloadGuard {
     }
 }
 
-/// Check, download in the background, then prompt to restart.
-///
-/// - `show_up_to_date`: show a "you're up to date" dialog when nothing is found.
-/// - `confirm_before_download`: ask the user before the download starts.
-///
-/// The download always runs in the background (in this thread, without blocking
-/// the UI). Once it finishes, a dialog asks the user to restart, and only then
-/// is the downloaded update installed.
-fn run_update_flow(app: AppHandle, show_up_to_date: bool, confirm_before_download: bool) {
+/// Check for the latest version and download it, returning the downloaded
+/// bytes (signature already verified). `None` means we're up to date.
+fn check_and_download(app: &AppHandle) -> Result<Option<PendingUpdate>, String> {
+    tauri::async_runtime::block_on(async {
+        let updater = app.updater().map_err(|e| e.to_string())?;
+        match updater.check().await.map_err(|e| e.to_string())? {
+            Some(update) => {
+                let version = update.version.to_string();
+                let bytes = update
+                    .download(|_chunk_length, _content_length| {}, || {})
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(Some(PendingUpdate { version, update, bytes }))
+            }
+            None => Ok(None),
+        }
+    })
+}
+
+/// Prompt the user to install the already-downloaded update, then install it.
+/// Runs in the caller's thread; `pending` is taken (and put back on "Later").
+fn prompt_and_install(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let pending = state.pending.lock().unwrap().take();
+    let Some(pending) = pending else {
+        return;
+    };
+
+    let yes = app
+        .dialog()
+        .message(format!(
+            "DeepSeek Harness {} has been downloaded.\n\nRestart now to install the update?",
+            pending.version
+        ))
+        .title("Update Ready")
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "Restart & Update".into(),
+            "Later".into(),
+        ))
+        .blocking_show();
+
+    if !yes {
+        // Keep the downloaded update so the badge can be clicked again.
+        *state.pending.lock().unwrap() = Some(pending);
+        return;
+    }
+
+    let PendingUpdate { update, bytes, .. } = pending;
+    match update.install(bytes) {
+        Ok(()) => app.restart(),
+        Err(e) => {
+            let _ = app
+                .dialog()
+                .message(format!("Install failed: {e}"))
+                .title("DeepSeek Harness")
+                .blocking_show();
+        }
+    }
+}
+
+/// Menu entry: manual check. If an update is already downloaded, prompts to
+/// install; otherwise checks, downloads, then prompts.
+fn check_for_updates(app: AppHandle) {
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
-        if state.downloading.swap(true, Ordering::SeqCst) {
-            return; // another download already in progress
+
+        if state.pending.lock().unwrap().is_some() {
+            prompt_and_install(&app);
+            return;
         }
+
+        state.downloading.store(true, Ordering::SeqCst);
         let _guard = DownloadGuard(app.clone());
 
-        let checked: Result<Option<tauri_plugin_updater::Update>, String> =
-            tauri::async_runtime::block_on(async {
-                let updater = app.updater().map_err(|e| e.to_string())?;
-                updater.check().await.map_err(|e| e.to_string())
-            });
-
-        let update = match checked {
-            Ok(Some(update)) => update,
-            Ok(None) => {
-                if show_up_to_date {
-                    let _ = app
-                        .dialog()
-                        .message("You are running the latest version.")
-                        .title("DeepSeek Harness")
-                        .blocking_show();
+        match check_and_download(&app) {
+            Ok(Some(pending)) => {
+                let version = pending.version.clone();
+                *state.pending.lock().unwrap() = Some(pending);
+                let _ = app.emit(
+                    "update-available",
+                    UpdatePayload {
+                        version: version.clone(),
+                    },
+                );
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.eval(BADGE_SCRIPT);
                 }
-                return;
+                prompt_and_install(&app);
+            }
+            Ok(None) => {
+                let _ = app
+                    .dialog()
+                    .message("You are running the latest version.")
+                    .title("DeepSeek Harness")
+                    .blocking_show();
             }
             Err(e) => {
                 let _ = app
@@ -288,115 +368,42 @@ fn run_update_flow(app: AppHandle, show_up_to_date: bool, confirm_before_downloa
                     .message(format!("Update check failed: {e}"))
                     .title("DeepSeek Harness")
                     .blocking_show();
-                return;
-            }
-        };
-
-        if confirm_before_download {
-            let yes = app
-                .dialog()
-                .message(format!(
-                    "DeepSeek Harness {} is available.\n\nDownload it in the background?",
-                    update.version
-                ))
-                .title("Update Available")
-                .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-                    "Download".into(),
-                    "Later".into(),
-                ))
-                .blocking_show();
-            if !yes {
-                return;
-            }
-        }
-
-        // Download in the background. `download` also verifies the minisign
-        // signature before returning the bytes.
-        let bytes = tauri::async_runtime::block_on(async {
-            update
-                .download(|_chunk_length, _content_length| {}, || {})
-                .await
-        });
-
-        let bytes = match bytes {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                let _ = app
-                    .dialog()
-                    .message(format!("Download failed: {e}"))
-                    .title("DeepSeek Harness")
-                    .blocking_show();
-                return;
-            }
-        };
-
-        // Download finished: prompt the user to restart to apply the update.
-        let yes = app
-            .dialog()
-            .message(format!(
-                "DeepSeek Harness {} has been downloaded.\n\nRestart now to install the update?",
-                update.version
-            ))
-            .title("Update Ready")
-            .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-                "Restart & Update".into(),
-                "Later".into(),
-            ))
-            .blocking_show();
-
-        if !yes {
-            return;
-        }
-
-        match update.install(bytes) {
-            Ok(()) => app.restart(),
-            Err(e) => {
-                let _ = app
-                    .dialog()
-                    .message(format!("Install failed: {e}"))
-                    .title("DeepSeek Harness")
-                    .blocking_show();
             }
         }
     });
 }
 
-/// Menu entry: manual check (shows "up to date" when nothing is found).
-fn check_for_updates(app: AppHandle) {
-    run_update_flow(app, true, true);
-}
-
-/// Background periodic check. When a new version is found, stores it, emits the
-/// `update-available` event, and injects the download badge into the webview.
+/// Background periodic check. When a new version is found, downloads it in the
+/// background and only then (once downloaded) emits the event and injects the
+/// badge. Holds at most one downloaded version: while one is pending, no new
+/// download starts. After the user installs it (and the app restarts on the new
+/// version), the next check downloads the latest version — which may skip
+/// intermediate releases.
 fn auto_update_check(app: AppHandle) {
     std::thread::spawn(move || {
         // Wait for the backend + UI to come up before the first check.
         std::thread::sleep(std::time::Duration::from_secs(20));
         loop {
-            let found: Option<String> = tauri::async_runtime::block_on(async {
-                let updater = app.updater().ok()?;
-                updater
-                    .check()
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|u| u.version.to_string())
-            });
+            let state = app.state::<AppState>();
+            let busy = state.downloading.load(Ordering::SeqCst)
+                || state.pending.lock().unwrap().is_some();
+            if !busy {
+                state.downloading.store(true, Ordering::SeqCst);
+                let result = check_and_download(&app);
+                state.downloading.store(false, Ordering::SeqCst);
 
-            if let Some(version) = found {
-                *app.state::<AppState>().update.lock().unwrap() = Some(version.clone());
-                let _ = app.emit(
-                    "update-available",
-                    UpdatePayload {
-                        version: version.clone(),
-                    },
-                );
-            }
-
-            // Re-inject the badge if an update is pending (covers page reloads).
-            if app.state::<AppState>().update.lock().unwrap().is_some() {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.eval(BADGE_SCRIPT);
+                if let Ok(Some(pending)) = result {
+                    let version = pending.version.clone();
+                    *state.pending.lock().unwrap() = Some(pending);
+                    let _ = app.emit(
+                        "update-available",
+                        UpdatePayload {
+                            version: version.clone(),
+                        },
+                    );
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.eval(BADGE_SCRIPT);
+                    }
                 }
             }
 
