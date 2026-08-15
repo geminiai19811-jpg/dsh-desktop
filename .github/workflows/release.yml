@@ -131,16 +131,29 @@ jobs:
           path: dist-assets
           merge-multiple: true
 
-      - name: Generate latest.json
+      - name: Generate latest.json (GitHub URLs)
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           python3 scripts/updater-manifest.py merge "$VERSION" dist-assets/latest.json dist-assets/latest-*.json
-          # Keep the release clean: drop the inlined signatures and fragments.
+
+      - name: Publish update artifacts to Aliyun OSS
+        shell: bash
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_REGION: ${{ secrets.OSS_REGION }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          pip install oss2 --quiet
+          python3 scripts/publish-oss.py "$VERSION" dist-assets
+          # Drop signatures/fragments now that both manifests are published.
           rm -f dist-assets/*.sig dist-assets/latest-*.json
 
-      - name: Publish GitHub Release
+      - name: Publish GitHub Release (fallback)
         uses: softprops/action-gh-release@v2
         with:
           files: dist-assets/*

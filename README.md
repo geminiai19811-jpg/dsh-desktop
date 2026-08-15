@@ -75,6 +75,10 @@ key baked into the app, so it cannot be tampered with.
 Because a release bundles both the shell and `dsh web`, one in-app update covers
 everything: a new `@deepseek-ai/dsh` (backend + web UI) and any shell changes.
 
+Updates are served from **Aliyun OSS** (fast for users in China), with GitHub
+Releases as a fallback. `release.yml` uploads the update bundles + a `latest.json`
+to OSS on every tagged release; the app tries OSS first, then GitHub.
+
 A scheduled GitHub Action (`.github/workflows/check-dsh-updates.yml`) watches npm
 daily for a new `@deepseek-ai/dsh` version. When one appears it pins the version in
 `dsh-version`, bumps the desktop version, and tags a new release — which triggers
@@ -86,6 +90,10 @@ daily for a new `@deepseek-ai/dsh` version. When one appears it pins the version
 | --- | --- |
 | `TAURI_SIGNING_PRIVATE_KEY` | The updater signing **private key** (content of `keys/dsh-desktop.key`). `release.yml` uses it to sign update artifacts. |
 | `RELEASE_TOKEN` | A Personal Access Token with repo `contents: write` + `workflows: write`, so the scheduled workflow can push a tag that triggers the release build. |
+| `OSS_ACCESS_KEY_ID` | Aliyun OSS RAM AccessKey ID, used by `release.yml` to upload update artifacts. |
+| `OSS_ACCESS_KEY_SECRET` | Matching AccessKey Secret (scope it to the update bucket only). |
+| `OSS_BUCKET` | The OSS bucket name (e.g. `deepseek-harness-desktop`). |
+| `OSS_REGION` | The OSS region (e.g. `oss-cn-hongkong`). |
 
 Generate the signing keypair locally (the `keys/` directory is git-ignored):
 
@@ -98,6 +106,10 @@ Then set the secrets:
 ```sh
 gh secret set TAURI_SIGNING_PRIVATE_KEY < keys/dsh-desktop.key
 gh secret set RELEASE_TOKEN
+gh secret set OSS_ACCESS_KEY_ID
+gh secret set OSS_ACCESS_KEY_SECRET
+gh secret set OSS_BUCKET
+gh secret set OSS_REGION
 ```
 
 ## 🛠 Build from source

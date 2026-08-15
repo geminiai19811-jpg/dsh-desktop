@@ -45,6 +45,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczRDE3NkY0RjYxMkEzQjUKUldTMW94TDI5SGJSYzhZb3k0V0FoRTg1RGtQZ1VlaUcxN2Y0UGJMZE5GWGtFRzFUUUhqd3ZreDcK",
       "endpoints": [
+        "https://deepseek-harness-desktop.oss-cn-hongkong.aliyuncs.com/latest.json",
         "https://github.com/xingj404-lab/dsh-desktop/releases/latest/download/latest.json"
       ]
     }
